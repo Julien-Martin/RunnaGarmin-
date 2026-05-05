@@ -243,9 +243,20 @@ select {
 }
 .dropzone-input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+.dropzone > p,
+.dropzone > .hint,
+.dropzone > .btn {
+  position: relative;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -535,11 +546,11 @@ details.debug pre {
   <!-- Screenshots -->
   <section class="card">
     <h2>Screenshots Runna</h2>
-    <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Déposer ou choisir des screenshots">
-      <input type="file" id="file-input" class="dropzone-input" accept="image/*" multiple tabindex="-1" aria-hidden="true" />
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="file-input" class="dropzone-input" accept="image/*" multiple aria-label="Choisir des screenshots" />
       <p>Glisser-déposer des screenshots ici</p>
       <span class="hint">PNG · JPG · WEBP · plusieurs OK</span>
-      <button type="button" class="btn primary" id="browse-btn">Parcourir</button>
+      <button type="button" class="btn primary" id="browse-btn" tabindex="-1" aria-hidden="true">Parcourir</button>
     </div>
     <div class="thumbs" id="thumbs"></div>
   </section>
@@ -674,37 +685,22 @@ function updateApiStatus() {
 // ---------- File input / dropzone ----------
 const dropzone = $('#dropzone');
 const fileInput = $('#file-input');
-const browseBtn = $('#browse-btn');
 const thumbs = $('#thumbs');
 
-browseBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  fileInput.click();
-});
-
-dropzone.addEventListener('click', (e) => {
-  if (e.target === browseBtn || browseBtn.contains(e.target)) return;
-  fileInput.click();
-});
-
-dropzone.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    fileInput.click();
-  }
-});
-
+// File input is a transparent overlay covering the dropzone — taps and drops
+// are handled natively by the input itself. We only listen to drag events
+// on the parent for the visual highlight.
 dropzone.addEventListener('dragover', (e) => {
   e.preventDefault();
   dropzone.classList.add('dragover');
 });
 dropzone.addEventListener('dragleave', (e) => {
-  if (e.target === dropzone) dropzone.classList.remove('dragover');
+  if (e.target === dropzone || e.target === fileInput) {
+    dropzone.classList.remove('dragover');
+  }
 });
-dropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
+dropzone.addEventListener('drop', () => {
   dropzone.classList.remove('dragover');
-  if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
 });
 
 fileInput.addEventListener('change', () => {
