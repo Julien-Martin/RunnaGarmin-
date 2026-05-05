@@ -757,8 +757,25 @@ const extractBtn = $('#extract-btn');
 const extractStatus = $('#extract-status');
 
 function updateExtractButton() {
-  const ready = state.apiKey.startsWith('sk-ant-') && state.images.length > 0;
+  const hasKey = state.apiKey.startsWith('sk-ant-');
+  const hasImages = state.images.length > 0;
+  const ready = hasKey && hasImages;
   extractBtn.disabled = !ready;
+
+  if (ready) {
+    extractBtn.textContent = `Analyser ${state.images.length} capture${state.images.length > 1 ? 's' : ''}`;
+    if (!extractStatus.classList.contains('error') && !extractStatus.classList.contains('success')) {
+      extractStatus.textContent = '';
+    }
+  } else {
+    extractBtn.textContent = 'Analyser les screenshots';
+    if (!extractStatus.classList.contains('error') && !extractStatus.classList.contains('success')) {
+      const missing = [];
+      if (!hasKey) missing.push('clé API Anthropic');
+      if (!hasImages) missing.push('au moins un screenshot');
+      extractStatus.textContent = missing.length ? '↑ manquant : ' + missing.join(' + ') : '';
+    }
+  }
 }
 
 extractBtn.addEventListener('click', async () => {
