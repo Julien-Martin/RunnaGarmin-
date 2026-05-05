@@ -10,9 +10,10 @@ statique.
 
 ## Stack
 
-- HTML / CSS / JS vanilla, single-file
-- [`@garmin/fitsdk`](https://www.npmjs.com/package/@garmin/fitsdk) chargé via
-  [esm.sh](https://esm.sh) (importmap)
+- HTML / CSS / JS vanilla, single-file, **zéro dépendance externe**
+- Encodeur FIT inline (la spec workout est petite : `FILE_ID` + `WORKOUT` +
+  `WORKOUT_STEP`). Le SDK officiel `@garmin/fitsdk` ne fournit qu'un décodeur
+  côté JavaScript, donc on s'en passe.
 - API Anthropic appelée directement depuis le navigateur avec
   `anthropic-dangerous-direct-browser-access: true`
 - Modèle : `claude-sonnet-4-5` (Vision)

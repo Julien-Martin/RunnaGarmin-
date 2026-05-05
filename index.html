@@ -8,13 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<script type="importmap">
-{
-  "imports": {
-    "@garmin/fitsdk": "https://esm.sh/@garmin/fitsdk@21.158.0?cjs-exports=Encoder,Decoder,Profile,Stream,Utils"
-  }
-}
-</script>
+<!-- No external SDK: the official @garmin/fitsdk is decode-only,
+     so a small custom FIT encoder is shipped inline below. -->
+
 <style>
 :root {
   --bg: #0a0a0b;
@@ -696,32 +692,185 @@ details.debug pre {
   __dbg('boot html (non-module)');
   __refreshDebugState({});
 
-  // Watchdog: if module hasn't reported loaded after 6s, the import probably failed
+  // Watchdog: if main script hasn't reported loaded after 6s, something's wrong
   setTimeout(function () {
     if (!window.__moduleLoaded) {
-      __dbg('⚠ module ES non chargé après 6s — l\'import @garmin/fitsdk a probablement échoué (réseau / esm.sh / importmap non supporté)');
+      __dbg('⚠ script principal non chargé après 6s — erreur de syntaxe JS probable');
       __refreshDebugState({});
     }
   }, 6000);
 })();
 </script>
 
-<script type="module">
-// CJS wrapped by esm.sh: try named imports first, fall back to default,
-// fall back to namespace. We log the actual shape for debug.
-import * as fitMod from '@garmin/fitsdk';
-const fitsdk = (fitMod && fitMod.default) ? fitMod.default : fitMod;
-const Encoder = fitsdk.Encoder || fitMod.Encoder;
-const Profile = fitsdk.Profile || fitMod.Profile;
-if (window.__dbg) {
-  window.__dbg('FIT module keys: [' + Object.keys(fitMod).join(', ') + ']');
-  if (fitMod.default) window.__dbg('FIT default keys: [' + Object.keys(fitMod.default).join(', ') + ']');
+<script>
+// Inline FIT encoder — no external dependency. The official
+// @garmin/fitsdk JavaScript package is decode-only, so we hand-
+// roll the small subset needed to write a workout file:
+// FILE_ID + WORKOUT + WORKOUT_STEP messages.
+
+// ---------- FIT format constants ----------
+const FIT_TS_OFFSET = 631065600; // seconds between Unix epoch and FIT epoch (1989-12-31)
+
+const FIT_BASE_TYPES = {
+  enum:    { id: 0x00, size: 1 },
+  uint8:   { id: 0x02, size: 1 },
+  uint16:  { id: 0x84, size: 2 },
+  uint32:  { id: 0x86, size: 4 },
+  uint32z: { id: 0x8C, size: 4 },
+  string:  { id: 0x07, size: 1 }, // size is overridden per-field
+};
+
+const MESG_NUMS = { FILE_ID: 0, WORKOUT: 26, WORKOUT_STEP: 27 };
+const FILE_TYPE       = { workout: 5 };
+const MANUFACTURER    = { development: 255 };
+const SPORT           = { training: 10 };
+const SUB_SPORT       = { strength_training: 20 };
+const INTENSITY       = { active: 0, rest: 1 };
+const DURATION_TYPE   = { time: 0, repeatUntilStepsCmplt: 6, reps: 28 };
+const TARGET_TYPE     = { open: 2 };
+
+const FIT_SCHEMAS = {
+  [MESG_NUMS.FILE_ID]: [
+    { name: 'serialNumber', num: 3, type: 'uint32z' },
+    { name: 'timeCreated',  num: 4, type: 'uint32' },
+    { name: 'manufacturer', num: 1, type: 'uint16' },
+    { name: 'product',      num: 2, type: 'uint16' },
+    { name: 'type',         num: 0, type: 'enum' },
+  ],
+  [MESG_NUMS.WORKOUT]: [
+    { name: 'wktName',       num: 8,  type: 'string', size: 32 },
+    { name: 'sport',         num: 4,  type: 'enum' },
+    { name: 'subSport',      num: 11, type: 'enum' },
+    { name: 'numValidSteps', num: 6,  type: 'uint16' },
+  ],
+  [MESG_NUMS.WORKOUT_STEP]: [
+    { name: 'messageIndex',  num: 254, type: 'uint16' },
+    { name: 'wktStepName',   num: 0,   type: 'string', size: 32 },
+    { name: 'durationType',  num: 1,   type: 'enum' },
+    { name: 'durationValue', num: 2,   type: 'uint32' },
+    { name: 'targetType',    num: 3,   type: 'enum' },
+    { name: 'targetValue',   num: 4,   type: 'uint32' },
+    { name: 'intensity',     num: 7,   type: 'enum' },
+    { name: 'notes',         num: 8,   type: 'string', size: 24 },
+  ],
+};
+
+const FIT_CRC_TABLE = [
+  0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400,
+];
+function fitCrc(bytes) {
+  let crc = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i] & 0xFF;
+    let tmp = FIT_CRC_TABLE[crc & 0xF];
+    crc = (crc >>> 4) & 0x0FFF;
+    crc = crc ^ tmp ^ FIT_CRC_TABLE[b & 0xF];
+    tmp = FIT_CRC_TABLE[crc & 0xF];
+    crc = (crc >>> 4) & 0x0FFF;
+    crc = crc ^ tmp ^ FIT_CRC_TABLE[(b >> 4) & 0xF];
+  }
+  return crc & 0xFFFF;
 }
-if (!Encoder || !Profile) {
-  const msg = 'FIT SDK introuvable — Encoder=' + typeof Encoder + ', Profile=' + typeof Profile +
-    ', module keys=[' + Object.keys(fitMod).join(', ') + ']';
-  if (window.__dbg) window.__dbg(msg);
-  throw new Error(msg);
+
+class FitEncoder {
+  constructor() {
+    this.body = [];
+    this.localTypes = new Map(); // mesgNum -> localType
+    this.nextLocalType = 0;
+  }
+  writeMesg(msg) {
+    const mesgNum = msg.mesgNum;
+    const fields = FIT_SCHEMAS[mesgNum];
+    if (!fields) throw new Error('Schéma inconnu pour mesgNum=' + mesgNum);
+    if (!this.localTypes.has(mesgNum)) {
+      const lt = this.nextLocalType++;
+      if (lt > 15) throw new Error('Trop de types locaux');
+      this.localTypes.set(mesgNum, lt);
+      this._writeDefinition(lt, mesgNum, fields);
+    }
+    this._writeData(this.localTypes.get(mesgNum), fields, msg);
+  }
+  _writeDefinition(lt, mesgNum, fields) {
+    this.body.push(0x40 | (lt & 0x0F)); // definition record header
+    this.body.push(0x00); // reserved
+    this.body.push(0x00); // architecture: little endian
+    this._u16(mesgNum);
+    this.body.push(fields.length);
+    for (const f of fields) {
+      const bt = FIT_BASE_TYPES[f.type];
+      const size = f.size || bt.size;
+      this.body.push(f.num);
+      this.body.push(size);
+      this.body.push(bt.id);
+    }
+  }
+  _writeData(lt, fields, msg) {
+    this.body.push(0x00 | (lt & 0x0F)); // data record header
+    for (const f of fields) {
+      this._writeField(f, msg[f.name]);
+    }
+  }
+  _writeField(f, value) {
+    const bt = FIT_BASE_TYPES[f.type];
+    const size = f.size || bt.size;
+    if (value === undefined || value === null) {
+      // Invalid bytes
+      const inv = (f.type === 'string' || f.type === 'uint32z') ? 0x00 : 0xFF;
+      for (let i = 0; i < size; i++) this.body.push(inv);
+      return;
+    }
+    switch (f.type) {
+      case 'enum':
+      case 'uint8':
+        this.body.push(value & 0xFF);
+        break;
+      case 'uint16':
+        this._u16(value);
+        break;
+      case 'uint32':
+      case 'uint32z':
+        this._u32(value);
+        break;
+      case 'string': {
+        const enc = new TextEncoder().encode(String(value));
+        const max = Math.max(0, size - 1); // leave 1 byte for null terminator
+        for (let i = 0; i < size; i++) {
+          this.body.push(i < Math.min(enc.length, max) ? enc[i] : 0x00);
+        }
+        break;
+      }
+      default:
+        throw new Error('Type FIT non géré: ' + f.type);
+    }
+  }
+  _u16(v) {
+    this.body.push(v & 0xFF);
+    this.body.push((v >> 8) & 0xFF);
+  }
+  _u32(v) {
+    this.body.push(v & 0xFF);
+    this.body.push((v >> 8) & 0xFF);
+    this.body.push((v >> 16) & 0xFF);
+    this.body.push((v >>> 24) & 0xFF);
+  }
+  close() {
+    const dataSize = this.body.length;
+    const header = [
+      12,             // header size
+      0x10,           // protocol version 1.0
+      0x48, 0x08,     // profile version 21.20 = 2120 (LE)
+      dataSize & 0xFF,
+      (dataSize >> 8) & 0xFF,
+      (dataSize >> 16) & 0xFF,
+      (dataSize >>> 24) & 0xFF,
+      0x2E, 0x46, 0x49, 0x54, // ".FIT"
+    ];
+    const all = header.concat(this.body);
+    const crc = fitCrc(all);
+    all.push(crc & 0xFF, (crc >> 8) & 0xFF);
+    return new Uint8Array(all);
+  }
 }
 
 // ---------- State ----------
@@ -784,9 +933,8 @@ function refreshDebugState() {
   });
 }
 
-dbg('module ES chargé en ' + window.__moduleLoadMs + 'ms');
-dbg('FIT SDK: Encoder=' + typeof Encoder + ', Profile=' + typeof Profile +
-    (Profile && Profile.MesgNum ? ', MesgNum.WORKOUT=' + Profile.MesgNum.WORKOUT : ''));
+dbg('script chargé en ' + window.__moduleLoadMs + 'ms');
+dbg('FIT encodeur: FitEncoder=' + typeof FitEncoder + ', schémas=[' + Object.keys(FIT_SCHEMAS).join(',') + ']');
 
 document.getElementById('debug-clear').addEventListener('click', () => {
   document.getElementById('debug-log').textContent = '';
@@ -1427,29 +1575,39 @@ function buildSteps(workout) {
 }
 
 function generateFit(workout) {
-  const encoder = new Encoder();
+  const encoder = new FitEncoder();
 
   encoder.writeMesg({
-    mesgNum: Profile.MesgNum.FILE_ID,
-    type: 'workout',
-    manufacturer: 'development',
+    mesgNum: MESG_NUMS.FILE_ID,
+    type: FILE_TYPE.workout,
+    manufacturer: MANUFACTURER.development,
     product: 0,
-    timeCreated: new Date(),
+    timeCreated: Math.floor(Date.now() / 1000) - FIT_TS_OFFSET,
     serialNumber: Math.floor(Math.random() * 1000000),
   });
 
   const steps = buildSteps(workout);
 
   encoder.writeMesg({
-    mesgNum: Profile.MesgNum.WORKOUT,
-    wktName: (workout.name || 'Séance').substring(0, 32),
-    sport: 'training',
-    subSport: 'strength_training',
+    mesgNum: MESG_NUMS.WORKOUT,
+    wktName: (workout.name || 'Séance').substring(0, 31),
+    sport: SPORT.training,
+    subSport: SUB_SPORT.strength_training,
     numValidSteps: steps.length,
   });
 
   for (const step of steps) {
-    encoder.writeMesg({ mesgNum: Profile.MesgNum.WORKOUT_STEP, ...step });
+    encoder.writeMesg({
+      mesgNum: MESG_NUMS.WORKOUT_STEP,
+      messageIndex: step.messageIndex,
+      wktStepName: step.wktStepName,
+      durationType: DURATION_TYPE[step.durationType],
+      durationValue: step.durationValue,
+      targetType: TARGET_TYPE[step.targetType] != null ? TARGET_TYPE[step.targetType] : 2,
+      targetValue: step.targetValue || 0,
+      intensity: step.intensity != null ? INTENSITY[step.intensity] : undefined,
+      notes: step.notes,
+    });
   }
 
   return encoder.close();
@@ -1579,17 +1737,22 @@ function runTests() {
     assertEq(s[0].notes, 'Par côté');
   });
 
-  test('FIT SDK: Encoder est callable', () => {
-    const e = new Encoder();
+  test('FitEncoder instance + méthodes', () => {
+    const e = new FitEncoder();
     assert(typeof e.writeMesg === 'function', 'writeMesg fn');
     assert(typeof e.close === 'function', 'close fn');
   });
 
-  test('FIT SDK: Profile.MesgNum disponibles', () => {
-    assert(Profile && Profile.MesgNum, 'Profile.MesgNum');
-    assert(Profile.MesgNum.FILE_ID != null, 'FILE_ID');
-    assert(Profile.MesgNum.WORKOUT != null, 'WORKOUT');
-    assert(Profile.MesgNum.WORKOUT_STEP != null, 'WORKOUT_STEP');
+  test('fitCrc CRC connu (vide → 0)', () => {
+    assertEq(fitCrc([]), 0);
+  });
+
+  test('fitCrc CRC byte unique reproductible', () => {
+    // CRC(0x00) doit être différent de CRC(0x01); les deux non-nuls dépendants du byte
+    const a = fitCrc([0x01]);
+    const b = fitCrc([0x02]);
+    assert(a !== b, 'CRC sensible au byte');
+    assertEq(a, fitCrc([0x01]));
   });
 
   test('FIT generation E2E (séance minimale)', () => {
@@ -1600,11 +1763,22 @@ function runTests() {
       ]}]
     };
     const bytes = generateFit(w);
-    assert(bytes && bytes.byteLength > 0, 'bytes non vides');
-    // FIT magic: byte 8-11 = ".FIT"
-    const u8 = new Uint8Array(bytes);
-    const magic = String.fromCharCode(u8[8], u8[9], u8[10], u8[11]);
+    assert(bytes instanceof Uint8Array, 'Uint8Array');
+    assert(bytes.byteLength > 14, 'taille minimale (header + body + crc)');
+    // Header
+    assertEq(bytes[0], 12, 'header size');
+    assertEq(bytes[1], 0x10, 'protocol version');
+    // Magic ".FIT" at offset 8
+    const magic = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
     assertEq(magic, '.FIT');
+    // Data size (LE) at offset 4-7 should match (total - 12 header - 2 crc)
+    const dataSize = bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+    assertEq(dataSize, bytes.byteLength - 14, 'data size cohérent');
+    // Last 2 bytes = file CRC, must match recomputed CRC of the rest
+    const allButCrc = Array.from(bytes.slice(0, bytes.byteLength - 2));
+    const computed = fitCrc(allButCrc);
+    const stored = bytes[bytes.byteLength - 2] | (bytes[bytes.byteLength - 1] << 8);
+    assertEq(computed, stored, 'file CRC valide');
   });
 
   const passed = results.filter(r => r.ok).length;
