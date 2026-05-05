@@ -11,7 +11,7 @@
 <script type="importmap">
 {
   "imports": {
-    "@garmin/fitsdk": "https://esm.sh/@garmin/fitsdk@21.158.0"
+    "@garmin/fitsdk": "https://esm.sh/@garmin/fitsdk@21.158.0?cjs-exports=Encoder,Decoder,Profile,Stream,Utils"
   }
 }
 </script>
@@ -707,7 +707,22 @@ details.debug pre {
 </script>
 
 <script type="module">
-import { Encoder, Profile } from '@garmin/fitsdk';
+// CJS wrapped by esm.sh: try named imports first, fall back to default,
+// fall back to namespace. We log the actual shape for debug.
+import * as fitMod from '@garmin/fitsdk';
+const fitsdk = (fitMod && fitMod.default) ? fitMod.default : fitMod;
+const Encoder = fitsdk.Encoder || fitMod.Encoder;
+const Profile = fitsdk.Profile || fitMod.Profile;
+if (window.__dbg) {
+  window.__dbg('FIT module keys: [' + Object.keys(fitMod).join(', ') + ']');
+  if (fitMod.default) window.__dbg('FIT default keys: [' + Object.keys(fitMod.default).join(', ') + ']');
+}
+if (!Encoder || !Profile) {
+  const msg = 'FIT SDK introuvable — Encoder=' + typeof Encoder + ', Profile=' + typeof Profile +
+    ', module keys=[' + Object.keys(fitMod).join(', ') + ']';
+  if (window.__dbg) window.__dbg(msg);
+  throw new Error(msg);
+}
 
 // ---------- State ----------
 const state = {
