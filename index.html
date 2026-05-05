@@ -1001,7 +1001,8 @@ function updateApiStatus() {
   apiStatus.classList.toggle('ok', ok);
 }
 
-syncApiKey();
+// note: syncApiKey() is called from the Init block at the bottom,
+// after all DOM refs (extractBtn, etc.) are declared
 
 // ---------- File input / dropzone ----------
 const dropzone = $('#dropzone');
@@ -1795,6 +1796,7 @@ function runTests() {
 }
 
 // ---------- Init ----------
+syncApiKey();
 updateExtractButton();
 refreshDebugState();
 runTests();
