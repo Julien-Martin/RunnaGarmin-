@@ -537,8 +537,11 @@ details.debug pre {
         class="big-text-input"
         placeholder="sk-ant-..."
         autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
         spellcheck="false"
       />
+      <button type="button" class="btn icon" id="toggle-api-key" aria-label="Afficher / masquer">👁</button>
       <span class="api-status" id="api-status">— manquante</span>
     </div>
   </section>
@@ -681,12 +684,25 @@ function syncApiKey() {
 });
 
 function updateApiStatus() {
-  const ok = state.apiKey.startsWith('sk-ant-');
-  apiStatus.textContent = ok ? '✓ ok' : '— manquante';
+  const k = state.apiKey;
+  const len = k.length;
+  const ok = k.startsWith('sk-ant-');
+  if (ok) {
+    apiStatus.textContent = `✓ ok (${len})`;
+  } else if (len === 0) {
+    apiStatus.textContent = '— manquante';
+  } else {
+    apiStatus.textContent = `✗ ${len} car. (≠ sk-ant-)`;
+  }
   apiStatus.classList.toggle('ok', ok);
 }
 
 syncApiKey();
+
+const toggleApiKey = $('#toggle-api-key');
+toggleApiKey.addEventListener('click', () => {
+  apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
+});
 
 // ---------- File input / dropzone ----------
 const dropzone = $('#dropzone');
