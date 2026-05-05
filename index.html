@@ -629,7 +629,11 @@ details.debug pre {
     <summary>🔍 DEBUG</summary>
     <div class="debug-section">
       <div class="debug-label">État</div>
-      <pre id="debug-state"></pre>
+      <pre id="debug-state">(initialisation…)</pre>
+    </div>
+    <div class="debug-section">
+      <div class="debug-label">Tests automatiques</div>
+      <pre id="debug-tests">(en attente du chargement du module)</pre>
     </div>
     <div class="debug-section">
       <div class="debug-label">Log d'événements</div>
@@ -640,6 +644,67 @@ details.debug pre {
 
   <div class="footer">RUNNA → GARMIN · single-file · vanilla</div>
 </div>
+
+<!-- Debug bootstrap (non-module): runs even if the ES module below fails to load -->
+<script>
+(function () {
+  const logEl = document.getElementById('debug-log');
+  const stateEl = document.getElementById('debug-state');
+
+  function fmt(a) {
+    if (a == null) return String(a);
+    if (a instanceof Error) return (a.message || 'Error') + (a.stack ? '\n  ' + String(a.stack).split('\n').slice(0, 3).join('\n  ') : '');
+    if (typeof a === 'string') return a;
+    try { return JSON.stringify(a); } catch { return String(a); }
+  }
+
+  window.__dbg = function (...args) {
+    const ts = new Date().toTimeString().slice(0, 8);
+    const line = '[' + ts + '] ' + args.map(fmt).join(' ');
+    if (!logEl) return;
+    logEl.textContent = (line + '\n' + logEl.textContent).split('\n').slice(0, 120).join('\n');
+  };
+
+  window.__refreshDebugState = function (info) {
+    if (!stateEl) return;
+    const k = (info && info.apiKey) || '';
+    stateEl.textContent = JSON.stringify({
+      module_loaded: !!window.__moduleLoaded,
+      module_load_ms: window.__moduleLoadMs || null,
+      apiKey_length: k.length,
+      apiKey_prefix: k.slice(0, 8),
+      apiKey_starts_with_sk_ant: k.startsWith('sk-ant-'),
+      images_count: (info && info.imagesCount) || 0,
+      workout_loaded: !!(info && info.workout),
+      workout_parts: (info && info.workout && info.workout.parts && info.workout.parts.length) || 0,
+      user_agent: navigator.userAgent.slice(0, 100),
+      url: location.href,
+    }, null, 2);
+  };
+
+  window.addEventListener('error', function (e) {
+    __dbg('window.error:', e.message || e, (e.filename || '') + ':' + (e.lineno || '?'));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    __dbg('unhandledrejection:', e.reason && (e.reason.message || e.reason));
+  });
+
+  // Capture console.error too
+  const origErr = console.error.bind(console);
+  console.error = function (...args) { __dbg('console.error:', ...args); origErr(...args); };
+
+  __dbg('boot html (non-module)');
+  __refreshDebugState({});
+
+  // Watchdog: if module hasn't reported loaded after 6s, the import probably failed
+  setTimeout(function () {
+    if (!window.__moduleLoaded) {
+      __dbg('⚠ module ES non chargé après 6s — l\'import @garmin/fitsdk a probablement échoué (réseau / esm.sh / importmap non supporté)');
+      __refreshDebugState({});
+    }
+  }, 6000);
+})();
+</script>
 
 <script type="module">
 import { Encoder, Profile } from '@garmin/fitsdk';
@@ -691,49 +756,27 @@ Retourne UNIQUEMENT le JSON, sans markdown, sans commentaire.`;
 const $ = (sel) => document.querySelector(sel);
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-// ---------- Debug ----------
-const debugLogEl = document.getElementById('debug-log');
-const debugStateEl = document.getElementById('debug-state');
+// Mark module as loaded so the bootstrap watchdog stops complaining
+window.__moduleLoaded = true;
+window.__moduleLoadMs = Math.round(performance.now());
 
-function dbg(...args) {
-  const ts = new Date().toTimeString().slice(0, 8);
-  const line = args.map(a => {
-    if (a instanceof Error) return a.message;
-    if (typeof a === 'string') return a;
-    try { return JSON.stringify(a); } catch { return String(a); }
-  }).join(' ');
-  const prev = debugLogEl.textContent;
-  const next = `[${ts}] ${line}\n` + prev;
-  debugLogEl.textContent = next.split('\n').slice(0, 80).join('\n');
-}
-
+const dbg = window.__dbg;
 function refreshDebugState() {
-  const k = (state.apiKey || '');
-  const info = {
-    apiKey_length: k.length,
-    apiKey_prefix: k.slice(0, 8),
-    apiKey_starts_with_sk_ant: k.startsWith('sk-ant-'),
-    images_count: state.images.length,
-    images_types: state.images.map(i => i.mediaType),
-    images_sizes_kb: state.images.map(i => Math.round(i.file.size / 1024)),
-    workout_loaded: !!state.workout,
-    workout_parts: state.workout ? state.workout.parts.length : 0,
-    user_agent: navigator.userAgent.slice(0, 80),
-  };
-  debugStateEl.textContent = JSON.stringify(info, null, 2);
+  window.__refreshDebugState({
+    apiKey: state.apiKey,
+    imagesCount: state.images.length,
+    workout: state.workout,
+  });
 }
 
-window.addEventListener('error', (e) => dbg('window.error:', e.message || e));
-window.addEventListener('unhandledrejection', (e) => {
-  dbg('unhandledrejection:', e.reason && (e.reason.message || e.reason));
-});
+dbg('module ES chargé en ' + window.__moduleLoadMs + 'ms');
+dbg('FIT SDK: Encoder=' + typeof Encoder + ', Profile=' + typeof Profile +
+    (Profile && Profile.MesgNum ? ', MesgNum.WORKOUT=' + Profile.MesgNum.WORKOUT : ''));
 
 document.getElementById('debug-clear').addEventListener('click', () => {
-  debugLogEl.textContent = '';
+  document.getElementById('debug-log').textContent = '';
   dbg('log vidé');
 });
-
-dbg('app démarrée');
 
 function slugify(s) {
   return (s || 'workout')
@@ -1424,9 +1467,148 @@ generateBtn.addEventListener('click', () => {
   }
 });
 
+// ---------- Tests ----------
+function runTests() {
+  const out = document.getElementById('debug-tests');
+  const results = [];
+
+  function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  function test(name, fn) {
+    try { fn(); results.push({ name, ok: true }); }
+    catch (e) { results.push({ name, ok: false, err: e.message || String(e) }); }
+  }
+  function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion'); }
+  function assertEq(a, b, msg) { if (!eq(a, b)) throw new Error((msg || 'eq') + ': ' + JSON.stringify(a) + ' ≠ ' + JSON.stringify(b)); }
+
+  test('slugify simple', () => assertEq(slugify('Endurance jambes'), 'endurance-jambes'));
+  test('slugify accents', () => assertEq(slugify('Séance test'), 'seance-test'));
+  test('slugify vide → workout', () => assertEq(slugify(''), 'workout'));
+  test('slugify caractères spéciaux', () => assertEq(slugify('Jour 1: 5x5!'), 'jour-1-5x5'));
+
+  test('normalizeWorkout valeurs par défaut', () => {
+    const w = normalizeWorkout({ name: 't' });
+    assertEq(w.name, 't');
+    assertEq(w.parts, []);
+  });
+  test('normalizeWorkout corrige repeat invalide', () => {
+    const w = normalizeWorkout({ parts: [{ repeat: 0, exercises: [] }] });
+    assertEq(w.parts[0].repeat, 1);
+  });
+
+  test('buildSteps reps simple', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 1, rest_between_sets_sec: 0,
+      exercises: [{ name: 'pompes', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false }] }] };
+    const s = buildSteps(w);
+    assertEq(s.length, 1);
+    assertEq(s[0].durationType, 'reps');
+    assertEq(s[0].durationValue, 10);
+    assertEq(s[0].intensity, 'active');
+  });
+
+  test('buildSteps time en millisecondes', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 1, rest_between_sets_sec: 0,
+      exercises: [{ name: 'plank', type: 'time', duration_sec: 30, reps: 0, per_side: false, is_superset_with_next: false }] }] };
+    const s = buildSteps(w);
+    assertEq(s[0].durationType, 'time');
+    assertEq(s[0].durationValue, 30000);
+  });
+
+  test('buildSteps repos 15s entre exos non-superset', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 1, rest_between_sets_sec: 0, exercises: [
+      { name: 'a', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false },
+      { name: 'b', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false }
+    ]}]};
+    const s = buildSteps(w);
+    assertEq(s.length, 3);
+    assertEq(s[1].intensity, 'rest');
+    assertEq(s[1].durationValue, 15000);
+  });
+
+  test('buildSteps superset n\'ajoute PAS de repos après', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 1, rest_between_sets_sec: 0, exercises: [
+      { name: 'a', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: true },
+      { name: 'b', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false }
+    ]}]};
+    const s = buildSteps(w);
+    assertEq(s.length, 2);
+    assertEq(s[0].wktStepName, 'a');
+    assertEq(s[1].wktStepName, 'b');
+  });
+
+  test('buildSteps repeat ajoute repos entre séries + step repeat', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 3, rest_between_sets_sec: 60, exercises: [
+      { name: 'pompes', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false }
+    ]}]};
+    const s = buildSteps(w);
+    assertEq(s.length, 3);
+    assertEq(s[1].intensity, 'rest');
+    assertEq(s[1].durationValue, 60000);
+    assertEq(s[2].durationType, 'repeatUntilStepsCmplt');
+    assertEq(s[2].durationValue, 0);
+    assertEq(s[2].targetValue, 3);
+  });
+
+  test('buildSteps wktStepName tronqué à 32', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 1, rest_between_sets_sec: 0, exercises: [
+      { name: 'a'.repeat(50), type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false }
+    ]}]};
+    const s = buildSteps(w);
+    assert(s[0].wktStepName.length <= 32, 'truncate');
+  });
+
+  test('buildSteps per_side ajoute notes', () => {
+    const w = { name: 't', parts: [{ name: 'p', repeat: 1, rest_between_sets_sec: 0, exercises: [
+      { name: 'fentes', type: 'reps', reps: 10, duration_sec: 0, per_side: true, is_superset_with_next: false }
+    ]}]};
+    const s = buildSteps(w);
+    assertEq(s[0].notes, 'Par côté');
+  });
+
+  test('FIT SDK: Encoder est callable', () => {
+    const e = new Encoder();
+    assert(typeof e.writeMesg === 'function', 'writeMesg fn');
+    assert(typeof e.close === 'function', 'close fn');
+  });
+
+  test('FIT SDK: Profile.MesgNum disponibles', () => {
+    assert(Profile && Profile.MesgNum, 'Profile.MesgNum');
+    assert(Profile.MesgNum.FILE_ID != null, 'FILE_ID');
+    assert(Profile.MesgNum.WORKOUT != null, 'WORKOUT');
+    assert(Profile.MesgNum.WORKOUT_STEP != null, 'WORKOUT_STEP');
+  });
+
+  test('FIT generation E2E (séance minimale)', () => {
+    const w = {
+      name: 'Test',
+      parts: [{ name: 'p', repeat: 2, rest_between_sets_sec: 30, exercises: [
+        { name: 'squat', type: 'reps', reps: 10, duration_sec: 0, per_side: false, is_superset_with_next: false }
+      ]}]
+    };
+    const bytes = generateFit(w);
+    assert(bytes && bytes.byteLength > 0, 'bytes non vides');
+    // FIT magic: byte 8-11 = ".FIT"
+    const u8 = new Uint8Array(bytes);
+    const magic = String.fromCharCode(u8[8], u8[9], u8[10], u8[11]);
+    assertEq(magic, '.FIT');
+  });
+
+  const passed = results.filter(r => r.ok).length;
+  const total = results.length;
+  const lines = [`${passed}/${total} tests OK${passed === total ? ' ✓' : ''}`];
+  for (const r of results) {
+    lines.push((r.ok ? '  ✓ ' : '  ✗ ') + r.name + (r.ok ? '' : ' — ' + r.err));
+  }
+  out.textContent = lines.join('\n');
+  dbg(`tests: ${passed}/${total} ${passed === total ? 'OK' : 'ÉCHEC'}`);
+  if (passed < total) {
+    for (const r of results) if (!r.ok) dbg('  ✗ ' + r.name + ': ' + r.err);
+  }
+}
+
 // ---------- Init ----------
 updateExtractButton();
 refreshDebugState();
+runTests();
 </script>
 </body>
 </html>
