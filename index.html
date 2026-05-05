@@ -507,6 +507,43 @@ details.debug pre {
 
 .hidden { display: none !important; }
 
+/* Debug card */
+.debug-card { gap: 8px; }
+.debug-card > summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  list-style: none;
+  text-transform: uppercase;
+}
+.debug-card > summary::-webkit-details-marker { display: none; }
+.debug-section { display: flex; flex-direction: column; gap: 6px; }
+.debug-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+#debug-state, #debug-log {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  background: var(--bg);
+  padding: 8px 10px;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 200px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--border);
+}
+
 /* Footer */
 .footer {
   text-align: center;
@@ -541,7 +578,6 @@ details.debug pre {
         autocorrect="off"
         spellcheck="false"
       />
-      <button type="button" class="btn icon" id="toggle-api-key" aria-label="Afficher / masquer">👁</button>
       <span class="api-status" id="api-status">— manquante</span>
     </div>
   </section>
@@ -588,6 +624,19 @@ details.debug pre {
       <pre id="json-debug"></pre>
     </details>
   </section>
+
+  <details class="card debug-card" id="debug-card" open>
+    <summary>🔍 DEBUG</summary>
+    <div class="debug-section">
+      <div class="debug-label">État</div>
+      <pre id="debug-state"></pre>
+    </div>
+    <div class="debug-section">
+      <div class="debug-label">Log d'événements</div>
+      <pre id="debug-log"></pre>
+      <button type="button" class="btn ghost" id="debug-clear" style="margin-top:6px">Vider le log</button>
+    </div>
+  </details>
 
   <div class="footer">RUNNA → GARMIN · single-file · vanilla</div>
 </div>
@@ -642,6 +691,50 @@ Retourne UNIQUEMENT le JSON, sans markdown, sans commentaire.`;
 const $ = (sel) => document.querySelector(sel);
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// ---------- Debug ----------
+const debugLogEl = document.getElementById('debug-log');
+const debugStateEl = document.getElementById('debug-state');
+
+function dbg(...args) {
+  const ts = new Date().toTimeString().slice(0, 8);
+  const line = args.map(a => {
+    if (a instanceof Error) return a.message;
+    if (typeof a === 'string') return a;
+    try { return JSON.stringify(a); } catch { return String(a); }
+  }).join(' ');
+  const prev = debugLogEl.textContent;
+  const next = `[${ts}] ${line}\n` + prev;
+  debugLogEl.textContent = next.split('\n').slice(0, 80).join('\n');
+}
+
+function refreshDebugState() {
+  const k = (state.apiKey || '');
+  const info = {
+    apiKey_length: k.length,
+    apiKey_prefix: k.slice(0, 8),
+    apiKey_starts_with_sk_ant: k.startsWith('sk-ant-'),
+    images_count: state.images.length,
+    images_types: state.images.map(i => i.mediaType),
+    images_sizes_kb: state.images.map(i => Math.round(i.file.size / 1024)),
+    workout_loaded: !!state.workout,
+    workout_parts: state.workout ? state.workout.parts.length : 0,
+    user_agent: navigator.userAgent.slice(0, 80),
+  };
+  debugStateEl.textContent = JSON.stringify(info, null, 2);
+}
+
+window.addEventListener('error', (e) => dbg('window.error:', e.message || e));
+window.addEventListener('unhandledrejection', (e) => {
+  dbg('unhandledrejection:', e.reason && (e.reason.message || e.reason));
+});
+
+document.getElementById('debug-clear').addEventListener('click', () => {
+  debugLogEl.textContent = '';
+  dbg('log vidé');
+});
+
+dbg('app démarrée');
+
 function slugify(s) {
   return (s || 'workout')
     .toLowerCase()
@@ -671,10 +764,15 @@ const apiStatus = $('#api-status');
 apiKeyInput.value = localStorage.getItem('anthropic_api_key') || '';
 
 function syncApiKey() {
+  const before = state.apiKey;
   state.apiKey = apiKeyInput.value.trim();
   if (state.apiKey) localStorage.setItem('anthropic_api_key', state.apiKey);
   updateApiStatus();
   updateExtractButton();
+  if (before !== state.apiKey) {
+    dbg(`apiKey changée: ${before.length} → ${state.apiKey.length} car.`);
+  }
+  refreshDebugState();
 }
 
 // Listen to multiple events because some password managers / mobile autofill
@@ -699,11 +797,6 @@ function updateApiStatus() {
 
 syncApiKey();
 
-const toggleApiKey = $('#toggle-api-key');
-toggleApiKey.addEventListener('click', () => {
-  apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
-});
-
 // ---------- File input / dropzone ----------
 const dropzone = $('#dropzone');
 const fileInput = $('#file-input');
@@ -726,6 +819,8 @@ dropzone.addEventListener('drop', () => {
 });
 
 fileInput.addEventListener('change', () => {
+  const n = fileInput.files ? fileInput.files.length : 0;
+  dbg(`fichier change: ${n} fichier(s) sélectionné(s)`);
   if (fileInput.files) handleFiles(fileInput.files);
   fileInput.value = '';
 });
@@ -733,19 +828,29 @@ fileInput.addEventListener('change', () => {
 async function handleFiles(fileList) {
   const accepted = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
   for (const file of fileList) {
-    if (!accepted.includes(file.type)) continue;
-    const base64 = await fileToBase64(file);
-    const url = URL.createObjectURL(file);
-    state.images.push({
-      id: uid(),
-      file,
-      base64,
-      mediaType: file.type === 'image/jpg' ? 'image/jpeg' : file.type,
-      url,
-    });
+    dbg(`fichier reçu: ${file.name} type=${file.type || '∅'} taille=${Math.round(file.size/1024)}kb`);
+    if (!accepted.includes(file.type)) {
+      dbg(`  ↳ rejeté: type non supporté (${file.type})`);
+      continue;
+    }
+    try {
+      const base64 = await fileToBase64(file);
+      const url = URL.createObjectURL(file);
+      state.images.push({
+        id: uid(),
+        file,
+        base64,
+        mediaType: file.type === 'image/jpg' ? 'image/jpeg' : file.type,
+        url,
+      });
+      dbg(`  ↳ ajouté (${state.images.length} total)`);
+    } catch (err) {
+      dbg('  ↳ erreur lecture:', err.message || err);
+    }
   }
   renderThumbs();
   updateExtractButton();
+  refreshDebugState();
 }
 
 function renderThumbs() {
@@ -779,43 +884,40 @@ const extractBtn = $('#extract-btn');
 const extractStatus = $('#extract-status');
 
 function updateExtractButton() {
-  const hasKey = state.apiKey.startsWith('sk-ant-');
   const hasImages = state.images.length > 0;
-  const ready = hasKey && hasImages;
-  extractBtn.disabled = !ready;
-
-  if (ready) {
-    extractBtn.textContent = `Analyser ${state.images.length} capture${state.images.length > 1 ? 's' : ''}`;
-    if (!extractStatus.classList.contains('error') && !extractStatus.classList.contains('success')) {
-      extractStatus.textContent = '';
-    }
-  } else {
-    extractBtn.textContent = 'Analyser les screenshots';
-    if (!extractStatus.classList.contains('error') && !extractStatus.classList.contains('success')) {
-      const missing = [];
-      if (!hasKey) missing.push('clé API Anthropic');
-      if (!hasImages) missing.push('au moins un screenshot');
-      extractStatus.textContent = missing.length ? '↑ manquant : ' + missing.join(' + ') : '';
-    }
+  extractBtn.disabled = !hasImages;
+  extractBtn.textContent = hasImages
+    ? `Analyser ${state.images.length} capture${state.images.length > 1 ? 's' : ''}`
+    : 'Analyser les screenshots';
+  if (!extractStatus.classList.contains('error') && !extractStatus.classList.contains('success')) {
+    extractStatus.textContent = hasImages ? '' : '↑ ajoutez au moins un screenshot';
   }
 }
 
 extractBtn.addEventListener('click', async () => {
+  dbg('clic Analyser');
   syncApiKey();
   if (!state.apiKey.startsWith('sk-ant-')) {
     extractStatus.classList.remove('success');
     extractStatus.classList.add('error');
-    extractStatus.textContent = '✗ clé API Anthropic invalide ou manquante';
+    extractStatus.textContent = `✗ clé API invalide (${state.apiKey.length} car., préfixe « ${state.apiKey.slice(0, 7)} »)`;
+    dbg('  ↳ bloqué: clé invalide');
+    return;
+  }
+  if (!state.images.length) {
+    extractStatus.classList.add('error');
+    extractStatus.textContent = '✗ aucune capture';
     return;
   }
   extractBtn.disabled = true;
   extractStatus.classList.remove('error', 'success');
   extractBtn.innerHTML = '<span class="spinner"></span> Analyse en cours…';
   extractStatus.textContent = 'Envoi à Claude Sonnet 4.5…';
+  dbg(`appel API: ${state.images.length} image(s), modèle claude-sonnet-4-5`);
   try {
     const data = await callClaude();
+    dbg('réponse JSON parsée: ' + (data.parts ? data.parts.length + ' partie(s)' : 'pas de parts'));
     if (!data || !Array.isArray(data.parts)) throw new Error('Réponse JSON invalide');
-    // Normalize defaults
     state.workout = normalizeWorkout(data);
     extractStatus.classList.add('success');
     extractStatus.textContent = '✓ extraction terminée';
@@ -823,11 +925,15 @@ extractBtn.addEventListener('click', async () => {
     showWorkout();
   } catch (err) {
     console.error(err);
+    dbg('erreur extraction:', err.message || err);
     extractStatus.classList.add('error');
     extractStatus.textContent = '✗ ' + (err.message || 'Erreur inconnue');
   } finally {
-    extractBtn.innerHTML = 'Analyser les screenshots';
+    extractBtn.innerHTML = state.images.length > 0
+      ? `Analyser ${state.images.length} capture${state.images.length > 1 ? 's' : ''}`
+      : 'Analyser les screenshots';
     updateExtractButton();
+    refreshDebugState();
   }
 });
 
@@ -856,12 +962,15 @@ async function callClaude() {
     }),
   });
 
+  dbg(`HTTP ${resp.status} ${resp.statusText}`);
   if (!resp.ok) {
     const text = await resp.text();
+    dbg('  body erreur:', text.slice(0, 400));
     throw new Error(`API ${resp.status}: ${text.slice(0, 200)}`);
   }
   const data = await resp.json();
   let text = (data.content && data.content[0] && data.content[0].text || '').trim();
+  dbg(`réponse texte (${text.length} car.)`);
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   return JSON.parse(text);
 }
@@ -1317,6 +1426,7 @@ generateBtn.addEventListener('click', () => {
 
 // ---------- Init ----------
 updateExtractButton();
+refreshDebugState();
 </script>
 </body>
 </html>
