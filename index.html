@@ -666,14 +666,18 @@ const apiKeyInput = $('#api-key');
 const apiStatus = $('#api-status');
 
 apiKeyInput.value = localStorage.getItem('anthropic_api_key') || '';
-state.apiKey = apiKeyInput.value;
-updateApiStatus();
 
-apiKeyInput.addEventListener('input', () => {
+function syncApiKey() {
   state.apiKey = apiKeyInput.value.trim();
-  localStorage.setItem('anthropic_api_key', state.apiKey);
+  if (state.apiKey) localStorage.setItem('anthropic_api_key', state.apiKey);
   updateApiStatus();
   updateExtractButton();
+}
+
+// Listen to multiple events because some password managers / mobile autofill
+// inject the value without firing 'input'. We poll on focus/blur too.
+['input', 'change', 'blur', 'paste', 'keyup'].forEach(ev => {
+  apiKeyInput.addEventListener(ev, () => setTimeout(syncApiKey, 0));
 });
 
 function updateApiStatus() {
@@ -681,6 +685,8 @@ function updateApiStatus() {
   apiStatus.textContent = ok ? '✓ ok' : '— manquante';
   apiStatus.classList.toggle('ok', ok);
 }
+
+syncApiKey();
 
 // ---------- File input / dropzone ----------
 const dropzone = $('#dropzone');
@@ -779,6 +785,13 @@ function updateExtractButton() {
 }
 
 extractBtn.addEventListener('click', async () => {
+  syncApiKey();
+  if (!state.apiKey.startsWith('sk-ant-')) {
+    extractStatus.classList.remove('success');
+    extractStatus.classList.add('error');
+    extractStatus.textContent = '✗ clé API Anthropic invalide ou manquante';
+    return;
+  }
   extractBtn.disabled = true;
   extractStatus.classList.remove('error', 'success');
   extractBtn.innerHTML = '<span class="spinner"></span> Analyse en cours…';
