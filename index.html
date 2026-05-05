@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0b" />
+<title>RUNNA → GARMIN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script type="importmap">
+{
+  "imports": {
+    "@garmin/fitsdk": "https://esm.sh/@garmin/fitsdk@21.158.0"
+  }
+}
+</script>
+<style>
+:root {
+  --bg: #0a0a0b;
+  --bg-elevated: #131316;
+  --bg-card: #1a1a1f;
+  --border: #2a2a31;
+  --border-strong: #3a3a44;
+  --text: #e8e8ea;
+  --text-dim: #8a8a92;
+  --text-muted: #5a5a62;
+  --accent: #ff6b1a;
+  --accent-dim: #cc5614;
+  --success: #4ade80;
+  --danger: #ef4444;
+  --font-ui: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  min-height: 100vh;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 15% 8%, rgba(255, 107, 26, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(255, 107, 26, 0.05), transparent 40%);
+  background-attachment: fixed;
+  padding: 16px;
+  padding-bottom: 64px;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 2px 8px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.header h1 {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.header h1 .arrow { color: var(--accent); margin: 0 4px; }
+.step-indicator {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.step-indicator .num { color: var(--accent); }
+
+/* Card */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .card { padding: 20px; }
+}
+.card h2 {
+  margin: 0;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Inputs */
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 120ms;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="number"] { font-family: var(--font-mono); width: 100%; }
+input:focus, select:focus { border-color: var(--accent); }
+input::placeholder { color: var(--text-muted); }
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238a8a92' d='M6 8L0 0h12z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+@media (max-width: 639px) {
+  /* Only big text inputs need 16px to avoid iOS zoom */
+  .big-text-input { font-size: 16px; }
+}
+
+/* Buttons */
+.btn {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 120ms;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:hover { border-color: var(--border-strong); color: var(--text); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.btn.primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+.btn.danger { color: var(--danger); border-color: var(--border); }
+.btn.danger:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
+.btn.ghost { background: transparent; border-color: var(--border); color: var(--text-dim); }
+.btn.ghost:hover { color: var(--text); border-color: var(--border-strong); }
+.btn.icon {
+  width: 32px; height: 32px;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.btn.full { width: 100%; }
+.btn.lg { padding: 14px 16px; font-size: 15px; }
+
+/* API key card */
+.api-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.api-row input { flex: 1; min-width: 0; }
+.api-status {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.api-status.ok { color: var(--success); }
+@media (max-width: 479px) {
+  .api-row { flex-direction: column; align-items: stretch; }
+  .api-status { text-align: right; }
+}
+
+/* Dropzone */
+.dropzone {
+  position: relative;
+  min-height: 120px;
+  border-radius: 12px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'><rect width='100%25' height='100%25' fill='none' stroke='%233a3a44' stroke-width='2' stroke-dasharray='6,4' rx='12' ry='12'/></svg>");
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 22px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 120ms;
+  -webkit-tap-highlight-color: transparent;
+}
+.dropzone.dragover {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'><rect width='100%25' height='100%25' fill='none' stroke='%23ff6b1a' stroke-width='2' stroke-dasharray='6,4' rx='12' ry='12'/></svg>");
+  background-color: rgba(255, 107, 26, 0.04);
+}
+.dropzone p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.dropzone .hint {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.dropzone-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Thumbnails */
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.thumb {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumb .remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.thumb .remove:hover { background: var(--danger); }
+
+/* Spinner */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: #fff;
+  animation: spin 700ms linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.status-msg {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 8px 0 0;
+}
+.status-msg.error { color: var(--danger); }
+.status-msg.success { color: var(--success); }
+
+/* Workout */
+.workout-name {
+  width: 100%;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 18px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.parts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.part {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.part-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.part-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+  flex: 1;
+  min-width: 0;
+}
+.part-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.part-controls label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.part-controls input[type="number"] {
+  width: 56px;
+  text-align: center;
+  padding: 6px 6px;
+  font-size: 13px;
+}
+@media (max-width: 559px) {
+  .part-header { flex-direction: column; align-items: stretch; }
+  .part-controls { justify-content: space-between; }
+}
+
+.exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exercise {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+.exercise.superset {
+  border-left: 3px solid var(--accent);
+}
+.exercise-row1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.exercise-row1 input.ex-name {
+  flex: 1;
+  min-width: 0;
+}
+.exercise-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.exercise-row2 select { padding: 6px 24px 6px 8px; font-size: 12px; flex-shrink: 0; }
+.exercise-row2 input[type="number"] {
+  width: 64px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: center;
+}
+.checkbox-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 6px;
+}
+.checkbox-pill input { margin: 0; accent-color: var(--accent); }
+
+.add-btn {
+  width: 100%;
+  padding: 12px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'><rect width='100%25' height='100%25' fill='none' stroke='%232a2a31' stroke-width='2' stroke-dasharray='6,4' rx='10' ry='10'/></svg>");
+  background-color: transparent;
+  border: none;
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 120ms, background-image 120ms;
+  -webkit-tap-highlight-color: transparent;
+}
+.add-btn:hover {
+  color: var(--accent);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'><rect width='100%25' height='100%25' fill='none' stroke='%23ff6b1a' stroke-width='2' stroke-dasharray='6,4' rx='10' ry='10'/></svg>");
+}
+
+.actions-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.actions-row .btn { flex: 1; }
+@media (max-width: 479px) {
+  .actions-row { flex-direction: column; }
+}
+
+details.debug {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+details.debug summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  list-style: none;
+}
+details.debug summary::-webkit-details-marker { display: none; }
+details.debug pre {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg);
+  padding: 10px;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 300px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hidden { display: none !important; }
+
+/* Footer */
+.footer {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  padding: 8px;
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="header">
+    <h1>RUNNA<span class="arrow">→</span>GARMIN</h1>
+    <div class="step-indicator" id="step-indicator"><span class="num">01</span> / IMPORT</div>
+  </header>
+
+  <!-- API key -->
+  <section class="card">
+    <h2>Clé API Anthropic</h2>
+    <div class="api-row">
+      <input
+        type="password"
+        id="api-key"
+        class="big-text-input"
+        placeholder="sk-ant-..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span class="api-status" id="api-status">— manquante</span>
+    </div>
+  </section>
+
+  <!-- Screenshots -->
+  <section class="card">
+    <h2>Screenshots Runna</h2>
+    <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Déposer ou choisir des screenshots">
+      <input type="file" id="file-input" class="dropzone-input" accept="image/*" multiple tabindex="-1" aria-hidden="true" />
+      <p>Glisser-déposer des screenshots ici</p>
+      <span class="hint">PNG · JPG · WEBP · plusieurs OK</span>
+      <button type="button" class="btn primary" id="browse-btn">Parcourir</button>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+  </section>
+
+  <!-- Extraction -->
+  <section class="card">
+    <h2>Extraction</h2>
+    <button type="button" class="btn primary lg full" id="extract-btn" disabled>
+      Analyser les screenshots
+    </button>
+    <div class="status-msg" id="extract-status"></div>
+  </section>
+
+  <!-- Workout -->
+  <section class="card hidden" id="workout-card">
+    <h2>Séance</h2>
+    <input type="text" id="workout-name" class="big-text-input workout-name" placeholder="Nom de la séance" />
+
+    <div class="parts-list" id="parts-list"></div>
+
+    <button type="button" class="add-btn" id="add-part-btn">+ AJOUTER UNE PARTIE</button>
+
+    <div class="actions-row">
+      <button type="button" class="btn ghost" id="reset-btn">Réinitialiser</button>
+      <button type="button" class="btn primary" id="generate-btn">Générer .FIT</button>
+    </div>
+
+    <div class="status-msg" id="generate-status"></div>
+
+    <details class="debug">
+      <summary>JSON brut (debug)</summary>
+      <pre id="json-debug"></pre>
+    </details>
+  </section>
+
+  <div class="footer">RUNNA → GARMIN · single-file · vanilla</div>
+</div>
+
+<script type="module">
+import { Encoder, Profile } from '@garmin/fitsdk';
+
+// ---------- State ----------
+const state = {
+  apiKey: '',
+  images: [],   // { id, file, base64, mediaType, url }
+  workout: null,
+};
+
+const SYSTEM_PROMPT = `Tu es un parser pour l'app Runna (séances de musculation).
+
+Analyse ces screenshots et extrait la séance complète au format JSON.
+
+Structure attendue :
+{
+  "name": "string (titre de la séance, ex: 'Endurance jambes')",
+  "parts": [
+    {
+      "name": "Partie 1",
+      "repeat": 1,
+      "rest_between_sets_sec": 60,
+      "exercises": [
+        {
+          "name": "string",
+          "type": "time" | "reps",
+          "duration_sec": 30,
+          "reps": 12,
+          "per_side": false,
+          "equipment": "bodyweight" | "kettlebell" | "elastic_band" | "other",
+          "is_superset_with_next": false
+        }
+      ]
+    }
+  ]
+}
+
+Règles :
+- "Séries: 3 au total" + badge "Répéter 3 fois" → repeat: 3 (le badge est plus fiable)
+- "15+ rép. / côté" → reps: 15, per_side: true
+- "10-12 répétitions" → reps: 10 (valeur basse)
+- Supersets : marquer is_superset_with_next: true sur le PREMIER exercice de la paire
+- Reproduire les noms d'exercices EXACTEMENT (en français)
+
+Retourne UNIQUEMENT le JSON, sans markdown, sans commentaire.`;
+
+// ---------- Utils ----------
+const $ = (sel) => document.querySelector(sel);
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function slugify(s) {
+  return (s || 'workout')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'workout';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      const comma = result.indexOf(',');
+      resolve(result.slice(comma + 1));
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---------- API key ----------
+const apiKeyInput = $('#api-key');
+const apiStatus = $('#api-status');
+
+apiKeyInput.value = localStorage.getItem('anthropic_api_key') || '';
+state.apiKey = apiKeyInput.value;
+updateApiStatus();
+
+apiKeyInput.addEventListener('input', () => {
+  state.apiKey = apiKeyInput.value.trim();
+  localStorage.setItem('anthropic_api_key', state.apiKey);
+  updateApiStatus();
+  updateExtractButton();
+});
+
+function updateApiStatus() {
+  const ok = state.apiKey.startsWith('sk-ant-');
+  apiStatus.textContent = ok ? '✓ ok' : '— manquante';
+  apiStatus.classList.toggle('ok', ok);
+}
+
+// ---------- File input / dropzone ----------
+const dropzone = $('#dropzone');
+const fileInput = $('#file-input');
+const browseBtn = $('#browse-btn');
+const thumbs = $('#thumbs');
+
+browseBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+
+dropzone.addEventListener('click', (e) => {
+  if (e.target === browseBtn || browseBtn.contains(e.target)) return;
+  fileInput.click();
+});
+
+dropzone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    fileInput.click();
+  }
+});
+
+dropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropzone.classList.add('dragover');
+});
+dropzone.addEventListener('dragleave', (e) => {
+  if (e.target === dropzone) dropzone.classList.remove('dragover');
+});
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files) handleFiles(fileInput.files);
+  fileInput.value = '';
+});
+
+async function handleFiles(fileList) {
+  const accepted = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+  for (const file of fileList) {
+    if (!accepted.includes(file.type)) continue;
+    const base64 = await fileToBase64(file);
+    const url = URL.createObjectURL(file);
+    state.images.push({
+      id: uid(),
+      file,
+      base64,
+      mediaType: file.type === 'image/jpg' ? 'image/jpeg' : file.type,
+      url,
+    });
+  }
+  renderThumbs();
+  updateExtractButton();
+}
+
+function renderThumbs() {
+  thumbs.innerHTML = '';
+  state.images.forEach(img => {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb';
+    const i = document.createElement('img');
+    i.src = img.url;
+    i.alt = '';
+    const btn = document.createElement('button');
+    btn.className = 'remove';
+    btn.type = 'button';
+    btn.textContent = '×';
+    btn.setAttribute('aria-label', 'Supprimer');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      URL.revokeObjectURL(img.url);
+      state.images = state.images.filter(x => x.id !== img.id);
+      renderThumbs();
+      updateExtractButton();
+    });
+    wrap.appendChild(i);
+    wrap.appendChild(btn);
+    thumbs.appendChild(wrap);
+  });
+}
+
+// ---------- Extraction ----------
+const extractBtn = $('#extract-btn');
+const extractStatus = $('#extract-status');
+
+function updateExtractButton() {
+  const ready = state.apiKey.startsWith('sk-ant-') && state.images.length > 0;
+  extractBtn.disabled = !ready;
+}
+
+extractBtn.addEventListener('click', async () => {
+  extractBtn.disabled = true;
+  extractStatus.classList.remove('error', 'success');
+  extractBtn.innerHTML = '<span class="spinner"></span> Analyse en cours…';
+  extractStatus.textContent = 'Envoi à Claude Sonnet 4.5…';
+  try {
+    const data = await callClaude();
+    if (!data || !Array.isArray(data.parts)) throw new Error('Réponse JSON invalide');
+    // Normalize defaults
+    state.workout = normalizeWorkout(data);
+    extractStatus.classList.add('success');
+    extractStatus.textContent = '✓ extraction terminée';
+    setStep(2);
+    showWorkout();
+  } catch (err) {
+    console.error(err);
+    extractStatus.classList.add('error');
+    extractStatus.textContent = '✗ ' + (err.message || 'Erreur inconnue');
+  } finally {
+    extractBtn.innerHTML = 'Analyser les screenshots';
+    updateExtractButton();
+  }
+});
+
+async function callClaude() {
+  const content = [
+    ...state.images.map(img => ({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+    })),
+    { type: 'text', text: 'Analyse ces screenshots Runna et retourne uniquement le JSON.' },
+  ];
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`API ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  let text = (data.content && data.content[0] && data.content[0].text || '').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  return JSON.parse(text);
+}
+
+function normalizeWorkout(w) {
+  return {
+    name: w.name || 'Séance',
+    parts: (w.parts || []).map((p, i) => ({
+      name: p.name || `Partie ${i + 1}`,
+      repeat: Number.isFinite(+p.repeat) && +p.repeat > 0 ? +p.repeat : 1,
+      rest_between_sets_sec: Number.isFinite(+p.rest_between_sets_sec) ? +p.rest_between_sets_sec : 60,
+      exercises: (p.exercises || []).map(e => ({
+        name: e.name || 'Exercice',
+        type: e.type === 'reps' ? 'reps' : 'time',
+        duration_sec: Number.isFinite(+e.duration_sec) ? +e.duration_sec : 0,
+        reps: Number.isFinite(+e.reps) ? +e.reps : 0,
+        per_side: !!e.per_side,
+        equipment: e.equipment || 'bodyweight',
+        is_superset_with_next: !!e.is_superset_with_next,
+      })),
+    })),
+  };
+}
+
+// ---------- Workout UI ----------
+const workoutCard = $('#workout-card');
+const workoutNameInput = $('#workout-name');
+const partsList = $('#parts-list');
+const addPartBtn = $('#add-part-btn');
+const resetBtn = $('#reset-btn');
+const generateBtn = $('#generate-btn');
+const generateStatus = $('#generate-status');
+const jsonDebug = $('#json-debug');
+
+function showWorkout() {
+  workoutCard.classList.remove('hidden');
+  workoutNameInput.value = state.workout.name;
+  renderParts();
+  updateDebug();
+}
+
+workoutNameInput.addEventListener('input', () => {
+  if (state.workout) state.workout.name = workoutNameInput.value;
+});
+
+addPartBtn.addEventListener('click', () => {
+  if (!state.workout) state.workout = { name: '', parts: [] };
+  state.workout.parts.push({
+    name: `Partie ${state.workout.parts.length + 1}`,
+    repeat: 1,
+    rest_between_sets_sec: 60,
+    exercises: [],
+  });
+  renderParts();
+  updateDebug();
+});
+
+resetBtn.addEventListener('click', () => {
+  if (!confirm('Réinitialiser la séance et les screenshots ?')) return;
+  state.images.forEach(i => URL.revokeObjectURL(i.url));
+  state.images = [];
+  state.workout = null;
+  renderThumbs();
+  workoutCard.classList.add('hidden');
+  extractStatus.textContent = '';
+  extractStatus.classList.remove('error', 'success');
+  generateStatus.textContent = '';
+  generateStatus.classList.remove('error', 'success');
+  setStep(1);
+  updateExtractButton();
+});
+
+function renderParts() {
+  partsList.innerHTML = '';
+  state.workout.parts.forEach((part, pi) => {
+    partsList.appendChild(renderPart(part, pi));
+  });
+}
+
+function renderPart(part, pi) {
+  const el = document.createElement('div');
+  el.className = 'part';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'part-header';
+  const title = document.createElement('div');
+  title.className = 'part-title';
+  title.textContent = part.name || `Partie ${pi + 1}`;
+  header.appendChild(title);
+
+  const ctrls = document.createElement('div');
+  ctrls.className = 'part-controls';
+
+  // Repeat
+  const repLabel = document.createElement('label');
+  repLabel.textContent = 'Répéter';
+  const repInput = document.createElement('input');
+  repInput.type = 'number';
+  repInput.min = '1';
+  repInput.inputMode = 'numeric';
+  repInput.value = part.repeat;
+  repInput.addEventListener('input', () => {
+    part.repeat = Math.max(1, parseInt(repInput.value) || 1);
+    updateDebug();
+  });
+  repLabel.appendChild(repInput);
+  const repX = document.createElement('span');
+  repX.textContent = '×';
+  repLabel.appendChild(repX);
+  ctrls.appendChild(repLabel);
+
+  // Rest
+  const restLabel = document.createElement('label');
+  restLabel.textContent = 'Repos';
+  const restInput = document.createElement('input');
+  restInput.type = 'number';
+  restInput.min = '0';
+  restInput.inputMode = 'numeric';
+  restInput.value = part.rest_between_sets_sec;
+  restInput.addEventListener('input', () => {
+    part.rest_between_sets_sec = Math.max(0, parseInt(restInput.value) || 0);
+    updateDebug();
+  });
+  restLabel.appendChild(restInput);
+  const restU = document.createElement('span');
+  restU.textContent = 's';
+  restLabel.appendChild(restU);
+  ctrls.appendChild(restLabel);
+
+  // Delete part
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'btn icon danger';
+  delBtn.textContent = '×';
+  delBtn.title = 'Supprimer la partie';
+  delBtn.addEventListener('click', () => {
+    if (!confirm('Supprimer cette partie ?')) return;
+    state.workout.parts.splice(pi, 1);
+    renderParts();
+    updateDebug();
+  });
+  ctrls.appendChild(delBtn);
+
+  header.appendChild(ctrls);
+  el.appendChild(header);
+
+  // Exercises
+  const exList = document.createElement('div');
+  exList.className = 'exercises';
+  part.exercises.forEach((ex, ei) => {
+    exList.appendChild(renderExercise(part, pi, ex, ei));
+  });
+  el.appendChild(exList);
+
+  // Add exercise
+  const addEx = document.createElement('button');
+  addEx.type = 'button';
+  addEx.className = 'add-btn';
+  addEx.textContent = '+ AJOUTER UN EXERCICE';
+  addEx.addEventListener('click', () => {
+    part.exercises.push({
+      name: '',
+      type: 'reps',
+      duration_sec: 0,
+      reps: 10,
+      per_side: false,
+      equipment: 'bodyweight',
+      is_superset_with_next: false,
+    });
+    renderParts();
+    updateDebug();
+  });
+  el.appendChild(addEx);
+
+  return el;
+}
+
+function renderExercise(part, pi, ex, ei) {
+  const el = document.createElement('div');
+  el.className = 'exercise' + (ex.is_superset_with_next ? ' superset' : '');
+
+  // Row 1: name + actions
+  const r1 = document.createElement('div');
+  r1.className = 'exercise-row1';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'ex-name big-text-input';
+  nameInput.value = ex.name;
+  nameInput.placeholder = "Nom de l'exercice";
+  nameInput.addEventListener('input', () => {
+    ex.name = nameInput.value;
+    updateDebug();
+  });
+  r1.appendChild(nameInput);
+
+  const upBtn = document.createElement('button');
+  upBtn.type = 'button';
+  upBtn.className = 'btn icon';
+  upBtn.textContent = '↑';
+  upBtn.title = 'Monter';
+  upBtn.disabled = ei === 0;
+  upBtn.addEventListener('click', () => {
+    if (ei === 0) return;
+    const arr = part.exercises;
+    [arr[ei - 1], arr[ei]] = [arr[ei], arr[ei - 1]];
+    renderParts();
+    updateDebug();
+  });
+  r1.appendChild(upBtn);
+
+  const downBtn = document.createElement('button');
+  downBtn.type = 'button';
+  downBtn.className = 'btn icon';
+  downBtn.textContent = '↓';
+  downBtn.title = 'Descendre';
+  downBtn.disabled = ei === part.exercises.length - 1;
+  downBtn.addEventListener('click', () => {
+    if (ei === part.exercises.length - 1) return;
+    const arr = part.exercises;
+    [arr[ei], arr[ei + 1]] = [arr[ei + 1], arr[ei]];
+    renderParts();
+    updateDebug();
+  });
+  r1.appendChild(downBtn);
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'btn icon danger';
+  delBtn.textContent = '×';
+  delBtn.title = 'Supprimer';
+  delBtn.addEventListener('click', () => {
+    part.exercises.splice(ei, 1);
+    renderParts();
+    updateDebug();
+  });
+  r1.appendChild(delBtn);
+
+  el.appendChild(r1);
+
+  // Row 2: type/value/checkboxes
+  const r2 = document.createElement('div');
+  r2.className = 'exercise-row2';
+
+  const typeSel = document.createElement('select');
+  ['time', 'reps'].forEach(t => {
+    const o = document.createElement('option');
+    o.value = t;
+    o.textContent = t === 'time' ? 'durée' : 'reps';
+    if (ex.type === t) o.selected = true;
+    typeSel.appendChild(o);
+  });
+  r2.appendChild(typeSel);
+
+  const valInput = document.createElement('input');
+  valInput.type = 'number';
+  valInput.min = '0';
+  valInput.inputMode = 'numeric';
+  valInput.value = ex.type === 'time' ? ex.duration_sec : ex.reps;
+  const unitSpan = document.createElement('span');
+  unitSpan.style.fontFamily = 'var(--font-mono)';
+  unitSpan.style.fontSize = '11px';
+  unitSpan.style.color = 'var(--text-dim)';
+  unitSpan.textContent = ex.type === 'time' ? 's' : 'rép';
+
+  typeSel.addEventListener('change', () => {
+    ex.type = typeSel.value;
+    valInput.value = ex.type === 'time' ? ex.duration_sec : ex.reps;
+    unitSpan.textContent = ex.type === 'time' ? 's' : 'rép';
+    updateDebug();
+  });
+  valInput.addEventListener('input', () => {
+    const v = Math.max(0, parseInt(valInput.value) || 0);
+    if (ex.type === 'time') ex.duration_sec = v;
+    else ex.reps = v;
+    updateDebug();
+  });
+  r2.appendChild(valInput);
+  r2.appendChild(unitSpan);
+
+  // Per-side
+  const psLabel = document.createElement('label');
+  psLabel.className = 'checkbox-pill';
+  const psCb = document.createElement('input');
+  psCb.type = 'checkbox';
+  psCb.checked = ex.per_side;
+  psCb.addEventListener('change', () => {
+    ex.per_side = psCb.checked;
+    updateDebug();
+  });
+  psLabel.appendChild(psCb);
+  psLabel.appendChild(document.createTextNode(' par côté'));
+  r2.appendChild(psLabel);
+
+  // Superset
+  const ssLabel = document.createElement('label');
+  ssLabel.className = 'checkbox-pill';
+  const ssCb = document.createElement('input');
+  ssCb.type = 'checkbox';
+  ssCb.checked = ex.is_superset_with_next;
+  ssCb.addEventListener('change', () => {
+    ex.is_superset_with_next = ssCb.checked;
+    el.classList.toggle('superset', ssCb.checked);
+    updateDebug();
+  });
+  ssLabel.appendChild(ssCb);
+  ssLabel.appendChild(document.createTextNode(' superset'));
+  r2.appendChild(ssLabel);
+
+  el.appendChild(r2);
+  return el;
+}
+
+function updateDebug() {
+  jsonDebug.textContent = JSON.stringify(state.workout, null, 2);
+}
+
+// ---------- Step indicator ----------
+function setStep(n) {
+  const el = $('#step-indicator');
+  if (n === 2) el.innerHTML = '<span class="num">02</span> / EDIT';
+  else el.innerHTML = '<span class="num">01</span> / IMPORT';
+}
+
+// ---------- FIT generation ----------
+function buildSteps(workout) {
+  const steps = [];
+  let idx = 0;
+
+  workout.parts.forEach(part => {
+    const partStart = idx;
+
+    part.exercises.forEach((ex, ei) => {
+      const isLast = ei === part.exercises.length - 1;
+      const namePart = ex.name + (ex.per_side ? ' (par côté)' : '');
+      const step = {
+        messageIndex: idx,
+        wktStepName: namePart.substring(0, 32),
+        intensity: 'active',
+        targetType: 'open',
+        targetValue: 0,
+      };
+      if (ex.type === 'time') {
+        step.durationType = 'time';
+        step.durationValue = Math.max(0, (ex.duration_sec || 0) * 1000);
+      } else {
+        step.durationType = 'reps';
+        step.durationValue = Math.max(0, ex.reps || 0);
+      }
+      if (ex.per_side) step.notes = 'Par côté';
+      steps.push(step);
+      idx++;
+
+      // Short rest between exercises (skip on superset, skip after the last in part)
+      if (!ex.is_superset_with_next && !isLast) {
+        steps.push({
+          messageIndex: idx,
+          wktStepName: 'Repos',
+          intensity: 'rest',
+          durationType: 'time',
+          durationValue: 15000,
+          targetType: 'open',
+          targetValue: 0,
+        });
+        idx++;
+      }
+    });
+
+    // Rest between sets at end of part (only if repeated)
+    if (part.repeat > 1) {
+      if ((part.rest_between_sets_sec || 0) > 0) {
+        steps.push({
+          messageIndex: idx,
+          wktStepName: 'Repos entre séries',
+          intensity: 'rest',
+          durationType: 'time',
+          durationValue: part.rest_between_sets_sec * 1000,
+          targetType: 'open',
+          targetValue: 0,
+        });
+        idx++;
+      }
+      // Repeat step
+      steps.push({
+        messageIndex: idx,
+        durationType: 'repeatUntilStepsCmplt',
+        durationValue: partStart,
+        targetType: 'open',
+        targetValue: part.repeat,
+      });
+      idx++;
+    }
+  });
+
+  return steps;
+}
+
+function generateFit(workout) {
+  const encoder = new Encoder();
+
+  encoder.writeMesg({
+    mesgNum: Profile.MesgNum.FILE_ID,
+    type: 'workout',
+    manufacturer: 'development',
+    product: 0,
+    timeCreated: new Date(),
+    serialNumber: Math.floor(Math.random() * 1000000),
+  });
+
+  const steps = buildSteps(workout);
+
+  encoder.writeMesg({
+    mesgNum: Profile.MesgNum.WORKOUT,
+    wktName: (workout.name || 'Séance').substring(0, 32),
+    sport: 'training',
+    subSport: 'strength_training',
+    numValidSteps: steps.length,
+  });
+
+  for (const step of steps) {
+    encoder.writeMesg({ mesgNum: Profile.MesgNum.WORKOUT_STEP, ...step });
+  }
+
+  return encoder.close();
+}
+
+generateBtn.addEventListener('click', () => {
+  generateStatus.classList.remove('error', 'success');
+  if (!state.workout || !state.workout.parts.length) {
+    generateStatus.classList.add('error');
+    generateStatus.textContent = '✗ aucune partie à exporter';
+    return;
+  }
+  try {
+    const bytes = generateFit(state.workout);
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = slugify(state.workout.name) + '.fit';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    generateStatus.classList.add('success');
+    generateStatus.textContent = '✓ fichier .FIT téléchargé';
+  } catch (err) {
+    console.error(err);
+    generateStatus.classList.add('error');
+    generateStatus.textContent = '✗ ' + (err.message || 'Erreur génération FIT');
+  }
+});
+
+// ---------- Init ----------
+updateExtractButton();
+</script>
+</body>
+</html>
